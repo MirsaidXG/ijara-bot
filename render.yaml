@@ -6,8 +6,8 @@ services:
     startCommand: python bot.py
     envVars:
       - key: BOT_TOKEN
-        value: YOUR_BOT_TOKEN_HERE
+        value: 8148663187:AAEXB9D7obfD_qYttoKgs7oKf3u4ST4EsUw
       - key: ADMIN_ID
-        value: YOUR_TELEGRAM_ID_HERE
+        value: 656995959
       - key: SELF_URL
         value: https://your-bot-name.onrender.com
