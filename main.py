@@ -16,7 +16,7 @@ import asyncio
 import pytz
 
 # === Настройка ===
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = "8148663187:AAEITQqwwxfqcelpVLc5qygohJBggblXiss"  # Вставил твой токен сюда
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 SELF_URL = os.getenv("SELF_URL")
 LIMITS_FILE = "limits.json"
@@ -193,7 +193,7 @@ async def ping_self(context: ContextTypes.DEFAULT_TYPE):
             last_ping_success = True
     except Exception as e:
         logger.warning(f"⚠️ Self-ping error: {e}")
-        if last_ping_success:  # только при первом сбое
+        if last_ping_success:
             await context.bot.send_message(chat_id=ADMIN_ID, text="⚠️ Бот не отвечает на self-ping!")
         last_ping_success = False
 
@@ -223,7 +223,6 @@ def main():
         .build()
     )
 
-    # Команды
     commands = [
         ("start", start),
         ("help", start),
@@ -239,7 +238,6 @@ def main():
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Очистка сообщений каждый день в 00:00 UTC+5
     tz_uz = pytz.timezone("Asia/Tashkent")
     target_time = tz_uz.localize(datetime.combine(datetime.now(tz_uz).date(), time(0, 0)))
     if target_time < datetime.now(tz_uz):
