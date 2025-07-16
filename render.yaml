@@ -3,11 +3,11 @@ services:
     name: telegram-anti-spam-bot
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+    startCommand: python main.py
     envVars:
       - key: BOT_TOKEN
         value: 8148663187:AAEXB9D7obfD_qYttoKgs7oKf3u4ST4EsUw
       - key: ADMIN_ID
         value: 656995959
       - key: SELF_URL
-        value: https://your-bot-name.onrender.com
+        value: https://telegram-anti-spam-bot.onrender.com
