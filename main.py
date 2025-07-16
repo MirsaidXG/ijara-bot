@@ -40,6 +40,7 @@ group_limits = {}
 deleted_messages_count = 0
 user_deleted_counts = {}
 filter_enabled = True
+last_ping_success = True  # Статус последнего ping
 
 # === Загрузка и сохранение ===
 def load_limits():
@@ -182,14 +183,19 @@ async def cleanup_and_report(context: ContextTypes.DEFAULT_TYPE):
 
 # === Self-ping ===
 async def ping_self(context: ContextTypes.DEFAULT_TYPE):
+    global last_ping_success
     if not SELF_URL:
         return
     try:
         async with aiohttp.ClientSession() as session:
             resp = await session.get(SELF_URL)
             logger.info(f"🛰 Self-ping status: {resp.status}")
+            last_ping_success = True
     except Exception as e:
         logger.warning(f"⚠️ Self-ping error: {e}")
+        if last_ping_success:  # только при первом сбое
+            await context.bot.send_message(chat_id=ADMIN_ID, text="⚠️ Бот не отвечает на self-ping!")
+        last_ping_success = False
 
 # === Health check ===
 async def health_handler(request):
