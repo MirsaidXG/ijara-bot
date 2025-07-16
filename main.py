@@ -1,19 +1,19 @@
 import logging
 import os
 import json
-from datetime import datetime, time, timedelta
-from cachetools import TTLCache
+from datetime import datetime, timedelta, time
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
-    filters,
     ContextTypes,
+    filters,
 )
 import aiohttp
 from aiohttp import web
 import asyncio
+import pytz
 
 # === Настройка ===
 TOKEN = os.getenv("BOT_TOKEN")
@@ -35,74 +35,48 @@ logging.basicConfig(
 logger = logging.getLogger()
 
 # === Хранилища ===
-user_messages = {}  # {(chat_id:user_id:text): count}
-group_limits = {}   # {chat_id: limit}
+user_messages = {}
+group_limits = {}
 deleted_messages_count = 0
-user_deleted_counts = {}  # {(chat_id:user_id): deleted_count}
+user_deleted_counts = {}
 filter_enabled = True
 
-# === Загрузка и сохранение лимитов ===
+# === Загрузка и сохранение ===
 def load_limits():
     global group_limits
     try:
         with open(LIMITS_FILE, "r", encoding="utf-8") as f:
             group_limits = {int(k): int(v) for k, v in json.load(f).items()}
-        logger.info("✅ Лимиты загружены.")
     except FileNotFoundError:
         group_limits = {}
-        logger.info("📂 limits.json не найден, создан новый.")
-    except Exception as e:
-        logger.error(f"❌ Ошибка загрузки лимитов: {e}")
 
 def save_limits():
-    try:
-        with open(LIMITS_FILE, "w", encoding="utf-8") as f:
-            json.dump(group_limits, f, indent=2, ensure_ascii=False)
-        logger.info("💾 Лимиты сохранены.")
-    except Exception as e:
-        logger.error(f"❌ Ошибка при сохранении лимитов: {e}")
+    with open(LIMITS_FILE, "w", encoding="utf-8") as f:
+        json.dump(group_limits, f, indent=2, ensure_ascii=False)
 
-# === Загрузка и сохранение счетчиков сообщений ===
 def load_user_messages():
     global user_messages
     try:
         with open(MESSAGES_FILE, "r", encoding="utf-8") as f:
             user_messages = json.load(f)
-        logger.info("✅ Счётчики сообщений загружены.")
     except FileNotFoundError:
         user_messages = {}
-        logger.info("📂 messages.json не найден. Создан новый.")
-    except Exception as e:
-        logger.error(f"❌ Ошибка загрузки счётчиков сообщений: {e}")
 
 def save_user_messages():
-    try:
-        with open(MESSAGES_FILE, "w", encoding="utf-8") as f:
-            json.dump(user_messages, f, indent=2, ensure_ascii=False)
-        logger.info("📥 Счётчики сообщений сохранены.")
-    except Exception as e:
-        logger.error(f"❌ Ошибка при сохранении счётчиков сообщений: {e}")
+    with open(MESSAGES_FILE, "w", encoding="utf-8") as f:
+        json.dump(user_messages, f, indent=2, ensure_ascii=False)
 
-# === Загрузка и сохранение счетчиков удалённых сообщений ===
 def load_user_deleted_counts():
     global user_deleted_counts
     try:
         with open(DELETED_COUNTS_FILE, "r", encoding="utf-8") as f:
             user_deleted_counts = json.load(f)
-        logger.info("✅ Счётчики удалённых сообщений загружены.")
     except FileNotFoundError:
         user_deleted_counts = {}
-        logger.info("📂 deleted_counts.json не найден. Создан новый.")
-    except Exception as e:
-        logger.error(f"❌ Ошибка загрузки счётчиков удалённых сообщений: {e}")
 
 def save_user_deleted_counts():
-    try:
-        with open(DELETED_COUNTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(user_deleted_counts, f, indent=2, ensure_ascii=False)
-        logger.info("📥 Счётчики удалённых сообщений сохранены.")
-    except Exception as e:
-        logger.error(f"❌ Ошибка при сохранении счётчиков удалённых сообщений: {e}")
+    with open(DELETED_COUNTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(user_deleted_counts, f, indent=2, ensure_ascii=False)
 
 def get_group_limit(chat_id: int) -> int:
     return group_limits.get(str(chat_id), DEFAULT_LIMIT)
@@ -172,7 +146,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     key = f"{chat_id}:{user.id}:{text[:50]}"
     cnt = user_messages.get(key, 0) + 1
     user_messages[key] = cnt
-    save_user_messages()  # сохраняем сразу после обновления счётчика
+    save_user_messages()
 
     if cnt > get_group_limit(update.effective_chat.id):
         try:
@@ -180,7 +154,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             deleted_messages_count += 1
             user_key = f"{chat_id}:{user.id}"
             user_deleted_counts[user_key] = user_deleted_counts.get(user_key, 0) + 1
-            save_user_deleted_counts()  # сохраняем после удаления
+            save_user_deleted_counts()
 
             uname = f"@{user.username}" if user.username else f"ID:{user.id}"
             message_text = (
@@ -190,11 +164,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"⛔️ Сообщение удалено"
             )
             await context.bot.send_message(chat_id=ADMIN_ID, text=message_text)
-            logger.info(f"Удалено от {uname}")
         except Exception as e:
             logger.error(f"Ошибка удаления сообщения: {e}", exc_info=True)
 
-# === Self-ping и отчёт ===
+# === Очистка сообщений ===
 async def cleanup_and_report(context: ContextTypes.DEFAULT_TYPE):
     global deleted_messages_count, user_messages
     report = (
@@ -203,12 +176,11 @@ async def cleanup_and_report(context: ContextTypes.DEFAULT_TYPE):
         f"Время: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"
     )
     await context.bot.send_message(chat_id=ADMIN_ID, text=report)
-
     user_messages.clear()
     save_user_messages()
     deleted_messages_count = 0
-    logger.info("📥 Очистка и отчёт выполнены.")
 
+# === Self-ping ===
 async def ping_self(context: ContextTypes.DEFAULT_TYPE):
     if not SELF_URL:
         return
@@ -219,7 +191,7 @@ async def ping_self(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.warning(f"⚠️ Self-ping error: {e}")
 
-# === Health check сервер ===
+# === Health check ===
 async def health_handler(request):
     return web.Response(text="OK", content_type='text/plain')
 
@@ -246,25 +218,29 @@ def main():
     )
 
     # Команды
-    for cmd, fn in [
-        ("start", start), ("help", start),
+    commands = [
+        ("start", start),
+        ("help", start),
         ("testadmin", test_admin),
         ("togglefilter", toggle_filter),
         ("setduplicates", set_duplicates),
         ("resetlimit", reset_limit),
         ("showlimits", show_limits),
         ("status", status),
-    ]:
+    ]
+    for cmd, fn in commands:
         app.add_handler(CommandHandler(cmd, fn))
 
-    # Сообщения
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Периодические задачи
-    # Отчёт и очистка - 24 часа (86400 секунд)
-    app.job_queue.run_repeating(cleanup_and_report, interval=86400, first=60)
+    # Очистка сообщений каждый день в 00:00 UTC+5
+    tz_uz = pytz.timezone("Asia/Tashkent")
+    target_time = tz_uz.localize(datetime.combine(datetime.now(tz_uz).date(), time(0, 0)))
+    if target_time < datetime.now(tz_uz):
+        target_time += timedelta(days=1)
+    delay = (target_time - datetime.now(tz_uz)).total_seconds()
 
-    # Self-ping - 9 минут (540 секунд)
+    app.job_queue.run_repeating(cleanup_and_report, interval=86400, first=delay)
     app.job_queue.run_repeating(ping_self, interval=540, first=120)
 
     logger.info("🚀 Бот запускается")
